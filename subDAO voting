@@ -1,0 +1,125 @@
+program pnw_subdao_voting.aleo;
+
+// Import cryptographic tools
+use std::crypto::pedersen_commit;
+use std::collections::map;
+
+// **🔹 SubDAO Structure**
+struct SubDAO {
+    subdao_id: u32,
+    total_funds: u64,
+    total_workers: u64,
+}
+
+// **🔹 Treasury Fund Allocation Proposal**
+struct FundProposal {
+    proposal_id: u32,
+    subdao_id: u32,
+    amount_requested: u64,
+    votes_for: u64,
+    votes_against: u64,
+    is_approved: bool,
+}
+
+// **🔹 Employer Violation Report**
+struct EmployerViolation {
+    employer_address: address,
+    report_count: u64,
+    votes_for_penalty: u64,
+    votes_against_penalty: u64,
+    is_penalized: bool,
+}
+
+// **🔹 Declare Mappings**
+mapping subdaos: map<u32, SubDAO>;
+mapping fund_proposals: map<u32, FundProposal>;
+mapping employer_violations: map<address, EmployerViolation>;
+
+// **🔹 Create Fund Allocation Proposal**
+transition propose_fund_allocation(subdao_id: u32, proposal_id: u32, amount_requested: u64) -> bool {
+    let subdao = subdaos[subdao_id];
+    assert(amount_requested <= subdao.total_funds, "Insufficient funds in SubDAO");
+
+    let proposal = FundProposal { 
+        proposal_id, 
+        subdao_id, 
+        amount_requested, 
+        votes_for: 0, 
+        votes_against: 0, 
+        is_approved: false 
+    };
+
+    fund_proposals[proposal_id] = proposal;
+    return true;
+}
+
+// **🔹 Worker Votes on Fund Allocation**
+transition vote_fund_allocation(proposal_id: u32, subdao_id: u32, worker_address: address, vote: bool) -> bool {
+    let subdao = subdaos[subdao_id];
+    let proposal = fund_proposals[proposal_id];
+    assert(proposal.subdao_id == subdao_id, "Proposal does not belong to this SubDAO");
+
+    let vote_weight = subdao.total_workers / 100000; // 1 vote per 100,000 workers
+    if subdao.total_workers == 10000 { vote_weight = 1; } // Minimum voting power for small SubDAOs
+
+    if vote { 
+        proposal.votes_for += vote_weight;
+    } else { 
+        proposal.votes_against += vote_weight;
+    }
+
+    // If all workers vote, increase vote value by 10%
+    if (proposal.votes_for + proposal.votes_against) == subdao.total_workers {
+        proposal.votes_for = proposal.votes_for * 110 / 100;
+        proposal.votes_against = proposal.votes_against * 110 / 100;
+    }
+
+    // If majority votes in favor, approve fund allocation
+    if proposal.votes_for > proposal.votes_against {
+        proposal.is_approved = true;
+        subdao.total_funds -= proposal.amount_requested;
+    }
+
+    fund_proposals[proposal_id] = proposal;
+    subdaos[subdao_id] = subdao;
+    return true;
+}
+
+// **🔹 Worker Reports Employer Violation**
+transition report_employer_violation(employer_address: address) -> bool {
+    let violation = employer_violations[employer_address];
+
+    violation.report_count += 1;
+    employer_violations[employer_address] = violation;
+    return true;
+}
+
+// **🔹 Workers Vote on Employer Penalty**
+transition vote_employer_penalty(employer_address: address, subdao_id: u32, worker_address: address, vote: bool) -> bool {
+    let subdao = subdaos[subdao_id];
+    let violation = employer_violations[employer_address];
+    assert(violation.report_count > 0, "Employer has no reports");
+
+    let vote_weight = subdao.total_workers / 100000;
+    if subdao.total_workers == 10000 { vote_weight = 1; }
+
+    if vote { 
+        violation.votes_for_penalty += vote_weight;
+    } else { 
+        violation.votes_against_penalty += vote_weight;
+    }
+
+    // If all workers vote, increase vote value by 10%
+    if (violation.votes_for_penalty + violation.votes_against_penalty) == subdao.total_workers {
+        violation.votes_for_penalty = violation.votes_for_penalty * 110 / 100;
+        violation.votes_against_penalty = violation.votes_against_penalty * 110 / 100;
+    }
+
+    // If majority votes in favor, penalize employer
+    if violation.votes_for_penalty > violation.votes_against_penalty {
+        violation.is_penalized = true;
+    }
+
+    employer_violations[employer_address] = violation;
+    return true;
+}
