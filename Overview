@@ -1,0 +1,75 @@
+# Proven Non-Citizen Workers (PNW) Smart Contracts
+
+## Overview  
+PNW is a blockchain-based system designed to manage payroll, worker rights, and SubDAO-controlled fund allocation for Proven Non-Citizen Workers (PNW). It ensures fair wage agreements, transparent governance, and compliance with labor laws while enabling secure government verification of worker status.
+
+---
+
+## **🔹 Key Features**  
+
+### **1️⃣ Worker Identity (NFT-Based System)**  
+- Each worker receives an **NFT identity** that stores:  
+  ✅ **Employment history**  
+  ✅ **Visa status & expiration**  
+  ✅ **Total earnings & trust fund balance**  
+- Allows **governments & employers to verify work history on-chain**.  
+
+### **2️⃣ Decentralized Payroll Processing**  
+- Workers receive **USDC or other stablecoins** through the **PNW Payroll Sidechain**.  
+- Employers must **pre-fund payroll** to prevent **wage theft**.  
+- **2% tax from wages** is allocated to **SubDAOs**, which vote on fund usage.  
+
+### **3️⃣ SubDAO Governance & Treasury Voting**  
+- Workers participate in **SubDAOs**, which control **treasury funds** collected from payroll taxes.  
+- SubDAOs vote on **fund allocation**, including:  
+  ✅ **Worker benefits & emergency relief**  
+  ✅ **Training & education programs**  
+  ✅ **Infrastructure improvements**  
+  ✅ **Investments to grow treasury funds**  
+
+### **4️⃣ Worker Protections & Employer Accountability**  
+- Workers can **report abusive employers** directly on-chain.  
+- If an employer **receives multiple reports**, SubDAOs **vote on penalties** (e.g., contract suspension).  
+
+### **5️⃣ Government API Integration**  
+- Approved government agencies can **verify work & visa status** via on-chain API requests.  
+- Helps with **visa renewals, tax compliance, and labor law enforcement**.  
+
+---
+
+## **🔹 How PNW Works**  
+1️⃣ **A migrant worker joins a SubDAO** and receives an **NFT identity**.  
+2️⃣ **An employer & SubDAO negotiate salary**, ensuring **fair wages**.  
+3️⃣ **Payroll is processed** on the **PNW Sidechain**, with **2% of wages going to SubDAO treasury**.  
+4️⃣ **SubDAOs vote on treasury funds**, deciding **how taxes are allocated**.  
+5️⃣ **Governments can verify worker status** to ensure **legal employment compliance**.  
+
+---
+
+## **🔹 Smart Contract Structure**  
+PNW operates across **two blockchain layers**:  
+🔹 **Main Chain (Aleo – Leo Smart Contracts)** → Handles **worker identity, payroll governance, and government verification**.  
+🔹 **Side Chain (Ethereum – Solidity Smart Contracts)** → Handles **stablecoin payroll processing & tax allocation**.  
+
+### **🔹 Main Smart Contracts**
+| Contract | Functionality |
+|----------|--------------|
+| `PNW_Main.leo` | Worker NFT issuance, payroll processing, SubDAO voting |
+| `PNW_GovernmentAPI.leo` | Government verification of worker status |
+| `PNWPayroll.sol` | Sidechain stablecoin payroll processing |
+
+---
+
+## **🔹 Security & Compliance**
+✅ **Prevents wage theft** – Employers must **pre-fund payroll**.  
+✅ **Eliminates fraud** – Government agencies can **verify work history**.  
+✅ **Protects worker data** – Only **approved agencies** can access sensitive records.  
+
+---
+
+## **🔹 Future Enhancements**
+🔹 **Cross-chain stablecoin support** (USDC, DAI, USDT).  
+🔹 **Automated employer penalties** for payroll violations.  
+🔹 **AI-powered dispute resolution** for worker complaints.  
+
+🚀 **PNW is a decentralized, fair, and transparent payroll system designed for migrant workers worldwide.**
