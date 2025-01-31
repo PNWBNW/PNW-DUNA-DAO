@@ -1,7 +1,11 @@
 # Proven Non-Citizen Workers (PNW) Smart Contracts
 
-## Overview  
-PNW is a blockchain-based system designed to manage payroll, worker rights, and SubDAO-controlled fund allocation for Proven Non-Citizen Workers (PNW). It ensures fair wage agreements, transparent governance, and compliance with labor laws while enabling secure government verification of worker status.
+## **🔹 Overview**  
+PNW is a blockchain-based payroll and governance system designed for **migrant workers**, ensuring:  
+✅ **Payroll flexibility** – Workers choose **Aleo USDC or Bridged USDC** at any time.  
+✅ **Fair governance** – SubDAOs vote on **worker benefits & fund allocation**.  
+✅ **Employer accountability** – Workers can **report abusive employers**.  
+✅ **Government compliance** – Labor offices verify work history using **ZPass zero-knowledge proofs**.  
 
 ---
 
@@ -12,18 +16,22 @@ PNW is a blockchain-based system designed to manage payroll, worker rights, and 
   ✅ **Employment history**  
   ✅ **Visa status & expiration**  
   ✅ **Total earnings & trust fund balance**  
-- Allows **governments & employers to verify work history on-chain**.  
+- **Government & employers** can verify work history **without exposing private data**.  
 
-### **2️⃣ Decentralized Payroll Processing**  
-- Workers receive **USDC or other stablecoins** through the **PNW Payroll Sidechain**.  
-- Employers must **pre-fund payroll** to prevent **wage theft**.  
-- **2% tax from wages** is allocated to **SubDAOs**, which vote on fund usage.  
+### **2️⃣ Payroll Processing (Supports Aleo USDC & Bridged USDC)**  
+- **Workers choose how they receive payments:**  
+  🔹 **Aleo USDC** (native Aleo blockchain)  
+  🔹 **Bridged USDC** (EVM-compatible sidechain)  
+- **ZPass-verified workers get benefits:**  
+  ✅ **Lower payroll tax** (1% instead of 2%)  
+  ✅ **Priority payroll processing** (faster payments)  
+  ✅ **+0.5% APY on unpaid wages in trust fund**  
 
 ### **3️⃣ SubDAO Governance & Treasury Voting**  
-- Workers participate in **SubDAOs**, which control **treasury funds** collected from payroll taxes.  
+- **Workers participate in SubDAOs**, which control **tax funds collected from payroll**.  
 - SubDAOs vote on **fund allocation**, including:  
   ✅ **Worker benefits & emergency relief**  
-  ✅ **Training & education programs**  
+  ✅ **Education & training programs**  
   ✅ **Infrastructure improvements**  
   ✅ **Investments to grow treasury funds**  
 
@@ -32,7 +40,7 @@ PNW is a blockchain-based system designed to manage payroll, worker rights, and 
 - If an employer **receives multiple reports**, SubDAOs **vote on penalties** (e.g., contract suspension).  
 
 ### **5️⃣ Government API Integration**  
-- Approved government agencies can **verify work & visa status** via on-chain API requests.  
+- Approved **government agencies** can **verify work & visa status** via **zero-knowledge proofs**.  
 - Helps with **visa renewals, tax compliance, and labor law enforcement**.  
 
 ---
@@ -40,9 +48,10 @@ PNW is a blockchain-based system designed to manage payroll, worker rights, and 
 ## **🔹 How PNW Works**  
 1️⃣ **A migrant worker joins a SubDAO** and receives an **NFT identity**.  
 2️⃣ **An employer & SubDAO negotiate salary**, ensuring **fair wages**.  
-3️⃣ **Payroll is processed** on the **PNW Sidechain**, with **2% of wages going to SubDAO treasury**.  
-4️⃣ **SubDAOs vote on treasury funds**, deciding **how taxes are allocated**.  
-5️⃣ **Governments can verify worker status** to ensure **legal employment compliance**.  
+3️⃣ **Workers choose their payroll option** (**Aleo USDC or Bridged USDC**).  
+4️⃣ **Employers process payroll**, with **ZPass workers receiving priority & lower tax**.  
+5️⃣ **SubDAOs vote on treasury funds**, deciding **how payroll tax is allocated**.  
+6️⃣ **Governments can verify worker status** to ensure **legal employment compliance**.  
 
 ---
 
@@ -56,7 +65,12 @@ PNW operates across **two blockchain layers**:
 |----------|--------------|
 | `PNW_Main.leo` | Worker NFT issuance, payroll processing, SubDAO voting |
 | `PNW_GovernmentAPI.leo` | Government verification of worker status |
-| `PNWPayroll.sol` | Sidechain stablecoin payroll processing |
+| `PNW_Payroll.leo` | Payroll system supporting **Aleo USDC & Bridged USDC** |
+
+### **🔹 Sidechain Smart Contracts**
+| Contract | Functionality |
+|----------|--------------|
+| `PNW_Payroll.sol` | Stablecoin payroll processing on Ethereum-compatible sidechain |
 
 ---
 
