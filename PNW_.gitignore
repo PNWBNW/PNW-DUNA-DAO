@@ -1,0 +1,27 @@
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore build artifacts
+/build/
+target/
+*.aleo
+*.avm
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+
+# Ignore cache and test results
+.cache/
+test_results/
+
+# Ignore private keys and secrets
+.env
+secrets.json
+private_keys/
+.wallet/
+
+# Ignore local Aleo network data
+aleo_network/
+aleo_blockchain_data/
