@@ -1,28 +1,17 @@
 program pnw_government_api.aleo;
 
-// Import cryptographic tools
 use std::crypto::pedersen_commit;
 use std::collections::map;
 
-// **🔹 Government API Request Structure**
+// **🔹 Government API Request**
 struct GovernmentAPIRequest {
-    government_id: field,  // Unique identifier for government entity
-    worker_id: u32,  
-    request_type: field,  // "VisaCheck" or "WorkVerification"
-}
-
-// **🔹 Worker NFT Structure**
-struct WorkerNFT {
+    government_id: field,
     worker_id: u32,
-    owner: address,
-    visa_status: field,  // Temporary, Permanent, etc.
-    visa_expiry: u64,  // Expiration timestamp
-    total_earnings: u64,  
-    trust_fund_balance: u64,  
+    request_type: field,  
+    zpass_proof: option<field>, 
 }
 
 // **🔹 Declare Mappings**
-mapping worker_nfts: map<address, WorkerNFT>;
 mapping government_requests: map<u32, GovernmentAPIRequest>;
 mapping approved_governments: map<field, bool>; // Stores approved agencies
 
@@ -32,20 +21,16 @@ transition approve_government_agency(government_id: field) -> bool {
     return true;
 }
 
-// **🔹 Government Requests Worker Verification**
-transition request_worker_verification(government_id: field, worker_id: u32, request_type: field) -> bool {
+// **🔹 Government Requests Worker Verification (ZPass Optional)**
+transition request_worker_verification(government_id: field, worker_id: u32, request_type: field, zpass_proof: option<field>) -> bool {
     assert(approved_governments[government_id], "Unauthorized government request");
 
-    let request = GovernmentAPIRequest { government_id, worker_id, request_type };
+    if zpass_proof.is_some() {
+        assert(verify_zpass(zpass_proof.unwrap()), "Invalid ZPass Proof");
+    }
+
+    let request = GovernmentAPIRequest { government_id, worker_id, request_type, zpass_proof };
     government_requests[worker_id] = request;
-    
+
     return true;
-}
-
-// **🔹 Verify Worker NFT (For Governments & Employers)**
-function verify_worker_nft(worker_id: u32) -> WorkerNFT {
-    let nft = worker_nfts.iter().find(|(_, n)| n.worker_id == worker_id);
-    assert(nft.is_some(), "Worker NFT not found");
-
-    return nft.unwrap().1;
 }
