@@ -45,7 +45,7 @@ transition register_worker(worker_address: address, employer: address, salary: u
     return true;
 }
 
-// **🔹 Process Payroll (Supports Aleo USDC & Bridged USDC)**
+// **🔹 Process Payroll (All Workers Pay 2% Tax)**
 transition process_payroll(worker_address: address, employer: address, provided_zpass: option<field>) -> bool {
     let worker = workers[worker_address];
     assert(worker.is_active, "Worker is not active");
@@ -56,7 +56,7 @@ transition process_payroll(worker_address: address, employer: address, provided_
         assert(verify_zpass(provided_zpass.unwrap()), "Invalid ZPass Proof");
     }
 
-    let tax = if worker.zpass_proof.is_some() { worker.salary * 1 / 100 } else { worker.salary * 2 / 100 }; // 1% tax for ZPass, 2% otherwise
+    let tax = worker.salary * 2 / 100; // 2% tax for all workers
     let net_salary = worker.salary - tax;
 
     if worker.preferred_currency == "aleo_usdc" {
@@ -73,43 +73,4 @@ transition process_payroll(worker_address: address, employer: address, provided_
     }
 
     return true;
-}
-
-// **🔹 Switch Payroll Currency Anytime**
-transition switch_payroll_currency(worker_address: address, new_currency: field) -> bool {
-    let worker = workers[worker_address];
-    assert(worker.is_active, "Worker is not active");
-    assert(new_currency == "aleo_usdc" || new_currency == "bridged_usdc", "Invalid currency choice");
-
-    worker.preferred_currency = new_currency;
-    workers[worker_address] = worker;
-    return true;
-}
-
-// **🔹 Apply Trust Fund APY (ZPass Users Get +0.5%)**
-transition apply_trust_fund_apy(worker_address: address) -> bool {
-    let worker = workers[worker_address];
-    assert(worker.is_active, "Worker is not active");
-
-    let apy_boost = if worker.zpass_proof.is_some() { worker.unpaid_wages * 5 / 1000 } else { 0 }; // +0.5% APY boost for ZPass
-    treasury.subdao_funds[worker.subdao_id] += apy_boost;
-
-    return true;
-}
-
-// **🔹 Function to Transfer Aleo USDC (Placeholder)**
-function transfer_aleo_usdc(worker_address: address, amount: u64) -> bool {
-    // Implementation for Aleo USDC transfer
-    return true;
-}
-
-// **🔹 Function to Transfer Bridged USDC (Placeholder)**
-function transfer_bridged_usdc(worker_address: address, amount: u64) -> bool {
-    // Implementation for Bridged USDC transfer
-    return true;
-}
-
-// **🔹 Verify ZPass Proof (Mock Function)**
-function verify_zpass(zpass_proof: field) -> bool {
-    return pedersen_commit(zpass_proof, 12345) == pedersen_commit(12345, zpass_proof); // Placeholder for real ZPass validation
 }
