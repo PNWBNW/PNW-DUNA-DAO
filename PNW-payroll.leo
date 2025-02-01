@@ -1,162 +1,95 @@
-program pnw_payroll.aleo;
+program pnw_smart_contract {
 
-use std::crypto::pedersen_commit;
-use std::collections::map;
+    mapping account_balances: mapping<address, u64>; // Worker -> Account Balance
+    mapping worker_visas: mapping<address, bool>; // Worker -> Visa Status
+    mapping subdao_membership: mapping<u32, u64>; // SubDAO ID -> Member Count
+    mapping payroll_taxes: mapping<address, u64>; // Worker -> State/Country Tax Amount
+    const MAX_SUBDAOS: u32 = 50;
+    const MIN_MEMBERS_FOR_NEW_SUBDAO: u64 = 100000;
+    const SUBDAO_TAX_PERCENT: u64 = 2; // 2% tax to SubDAO
 
-// **🔹 Worker Payroll Structure**
-struct Worker {
-    worker_id: u32,
-    employer: address,
-    salary: u64,
-    preferred_currency: field,  // "aleo_usdc" or "bridged_usdc"
-    last_paid: u64,
-    subdao_id: u32,
-    is_active: bool,
-    unpaid_wages: u64,
-    zpass_proof: option<field>, // Optional ZPass verification
-}
-
-// **🔹 Employer-SubDAO Salary Agreement**
-struct EmployerContract {
-    employer: address,
-    subdao_id: u32,
-    worker: address,
-    gross_salary: u64,  // Includes payroll tax
-    net_salary: u64,    // What the worker actually receives
-    tax_amount: u64,    // 2% payroll tax
-    is_active: bool,
-}
-
-// **🔹 Treasury Structure**
-struct Treasury {
-    subdao_funds: map<u32, u64>,
-}
-
-// **🔹 Declare Mappings**
-mapping workers: map<address, Worker>;
-mapping employer_contracts: map<address, EmployerContract>;
-mapping treasury: Treasury;
-
-// **🔹 Create Salary Agreement (Employer Must Cover Payroll Tax)**
-transition create_salary_agreement(employer: address, worker: address, subdao_id: u32, gross_salary: u64) -> bool {
-    let tax_amount = gross_salary * 2 / 100;
-    let net_salary = gross_salary - tax_amount;
-
-    let contract = EmployerContract {
-        employer,
-        subdao_id,
-        worker,
-        gross_salary,
-        net_salary,
-        tax_amount,
-        is_active: true,
-    };
-
-    employer_contracts[worker] = contract;
-    return true;
-}
-
-// **🔹 Register Worker with Payroll Preference**
-transition register_worker(worker_address: address, employer: address, salary: u64, preferred_currency: field, subdao_id: u32, zpass_proof: option<field>) -> bool {
-    let worker_id = pedersen_commit(worker_address, salary);
-
-    let worker = Worker {
-        worker_id,
-        employer,
-        salary,
-        preferred_currency,
-        last_paid: 0,
-        subdao_id,
-        is_active: true,
-        unpaid_wages: 0,
-        zpass_proof,
-    };
-
-    workers[worker_address] = worker;
-    return true;
-}
-
-// **🔹 Verify Employer Contract Before Payroll Processing**
-function verify_employer_contract(worker: address) -> EmployerContract {
-    let contract = employer_contracts[worker];
-    assert(contract.is_active, "Contract is not active");
-    return contract;
-}
-
-// **🔹 Process Payroll (Employer Pays Salary + Tax)**
-transition process_payroll(worker_address: address, employer: address, provided_zpass: option<field>) -> bool {
-    let contract = verify_employer_contract(worker_address);
-    assert(contract.employer == employer, "Unauthorized employer");
-
-    let tax = contract.tax_amount;
-    let net_salary = contract.net_salary;
-
-    // **🔹 Gas Fee Handling**
-    let gas_fee = calculate_gas_fee();
-    if workers[worker_address].preferred_currency == "aleo_usdc" {
-        treasury.subdao_funds[contract.subdao_id] -= gas_fee;  // SubDAO covers Aleo gas fees
-    } else {
-        assert(net_salary > gas_fee, "Worker must cover gas fees");
-        net_salary -= gas_fee;  // Worker covers gas fees on sidechain
+    // Check if a worker has a valid visa
+    function has_valid_visa(worker: address) -> bool {
+        return worker_visas.get(worker).unwrap_or(false);
     }
 
-    // **🔹 Payroll Transfer**
-    if workers[worker_address].preferred_currency == "aleo_usdc" {
-        transfer_aleo_usdc(worker_address, net_salary);
-    } else {
-        transfer_bridged_usdc(worker_address, net_salary);
+    // Issue a new worker visa (Unlimited Worker Visas)
+    function issue_worker_visa(worker: address) -> bool {
+        if has_valid_visa(worker) {
+            return false; // Worker already has a visa
+        }
+        worker_visas.set(worker, true);
+        return true;
     }
 
-    treasury.subdao_funds[contract.subdao_id] += tax;
-    workers[worker_address].last_paid = get_current_time();
-
-    if workers[worker_address].zpass_proof.is_some() {
-        workers[worker_address].unpaid_wages += net_salary;
+    // Get total number of members across all SubDAOs
+    function get_total_members() -> u64 {
+        let mut total: u64 = 0;
+        for i in 0..MAX_SUBDAOS {
+            total += subdao_membership.get(i).unwrap_or(0);
+        }
+        return total;
     }
 
-    return true;
-}
+    // Check if a new SubDAO can be created
+    function can_create_subdao() -> bool {
+        return get_total_members() >= MIN_MEMBERS_FOR_NEW_SUBDAO;
+    }
 
-// **🔹 Allow Workers to Switch Payroll Preference Anytime**
-transition switch_payroll_currency(worker_address: address, new_currency: field) -> bool {
-    let worker = workers[worker_address];
-    assert(worker.is_active, "Worker is not active");
-    assert(new_currency == "aleo_usdc" || new_currency == "bridged_usdc", "Invalid currency choice");
+    // Add a worker to a SubDAO
+    function add_worker_to_subdao(subdao_id: u32, worker: address) -> bool {
+        if subdao_id >= MAX_SUBDAOS {
+            return false; // Invalid SubDAO ID
+        }
+        if !has_valid_visa(worker) {
+            return false; // Worker must have a valid visa
+        }
+        let current_count = subdao_membership.get(subdao_id).unwrap_or(0);
+        subdao_membership.set(subdao_id, current_count + 1);
+        return true;
+    }
 
-    worker.preferred_currency = new_currency;
-    workers[worker_address] = worker;
-    return true;
-}
+    // Remove a worker from a SubDAO
+    function remove_worker_from_subdao(subdao_id: u32, worker: address) -> bool {
+        if subdao_id >= MAX_SUBDAOS {
+            return false; // Invalid SubDAO ID
+        }
+        if !has_valid_visa(worker) {
+            return false; // Worker must have a valid visa
+        }
+        let current_count = subdao_membership.get(subdao_id).unwrap_or(0);
+        if current_count == 0 {
+            return false; // No members to remove
+        }
+        subdao_membership.set(subdao_id, current_count - 1);
+        return true;
+    }
 
-// **🔹 Apply Trust Fund APY (ZPass Users Get +0.5%)**
-transition apply_trust_fund_apy(worker_address: address) -> bool {
-    let worker = workers[worker_address];
-    assert(worker.is_active, "Worker is not active");
+    // Set state/country tax for a worker
+    function set_state_tax(worker: address, tax_amount: u64) -> bool {
+        payroll_taxes.set(worker, tax_amount);
+        return true;
+    }
 
-    let apy_boost = if worker.zpass_proof.is_some() { worker.unpaid_wages * 5 / 1000 } else { 0 }; // +0.5% APY boost for ZPass
-    treasury.subdao_funds[worker.subdao_id] += apy_boost;
+    // Process payroll with tax deductions
+    function process_payroll(worker: address, gross_salary: u64) -> u64 {
+        if !has_valid_visa(worker) {
+            return 0; // Worker must have a valid visa
+        }
 
-    return true;
-}
+        let subdao_tax = (gross_salary * SUBDAO_TAX_PERCENT) / 100; // Calculate 2% SubDAO tax
+        let state_tax = payroll_taxes.get(worker).unwrap_or(0); // Get worker's state/country tax
 
-// **🔹 Function to Transfer Aleo USDC (Placeholder)**
-function transfer_aleo_usdc(worker_address: address, amount: u64) -> bool {
-    // Implementation for Aleo USDC transfer
-    return true;
-}
+        let total_deductions = subdao_tax + state_tax;
+        let net_salary = if gross_salary > total_deductions { gross_salary - total_deductions } else { 0 };
 
-// **🔹 Function to Transfer Bridged USDC (Placeholder)**
-function transfer_bridged_usdc(worker_address: address, amount: u64) -> bool {
-    // Implementation for Bridged USDC transfer
-    return true;
-}
+        account_balances.set(worker, account_balances.get(worker).unwrap_or(0) + net_salary);
 
-// **🔹 Verify ZPass Proof (Mock Function)**
-function verify_zpass(zpass_proof: field) -> bool {
-    return pedersen_commit(zpass_proof, 12345) == pedersen_commit(12345, zpass_proof); // Placeholder for real ZPass validation
-}
+        return net_salary;
+    }
 
-// **🔹 Calculate Gas Fee (Mock Function)**
-function calculate_gas_fee() -> u64 {
-    return 100;  // Placeholder gas fee amount
+    // Get worker’s account balance
+    function get_balance(worker: address) -> u64 {
+        return account_balances.get(worker).unwrap_or(0);
+    }
 }
