@@ -1,0 +1,89 @@
+program compliance_tracking {
+
+    mapping employer_tax_payments: mapping<address, u64>; // Tracks employer tax payments
+    mapping employer_missed_payments: mapping<address, u64>; // Counts missed tax payments
+    mapping blacklisted_employers: mapping<address, bool>; // Tracks banned employers
+    mapping employer_balances: mapping<address, u64>; // Employer funds available
+    mapping subdao_balances: mapping<address, u64>; // SubDAO tax funds
+
+    const MAX_MISSED_PAYMENTS: u64 = 3; // Employers get blacklisted after 3 missed payments
+    const PENALTY_RATE: u64 = 25; // Fine = Unpaid fees + 25% penalty
+    const SUBDAO_ALLOCATION: u64 = 25; // Extra 25% of fine goes to SubDAO fund
+
+    // Function to verify employer compliance and apply penalties if necessary
+    function verify_employer_compliance(employer: address, required_tax: u64) -> bool {
+        let paid_tax = employer_tax_payments.get(employer).unwrap_or(0);
+
+        if paid_tax < required_tax {
+            let missed_count = employer_missed_payments.get(employer).unwrap_or(0) + 1;
+            employer_missed_payments.set(employer, missed_count);
+
+            if missed_count >= MAX_MISSED_PAYMENTS {
+                blacklisted_employers.set(employer, true);
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    // Function to apply penalty for non-compliant employers
+    function apply_penalty(employer: address, unpaid_fees: u64) -> bool {
+        let penalty = unpaid_fees * (100 + PENALTY_RATE) / 100;
+        let subdao_share = penalty * SUBDAO_ALLOCATION / 100;
+        let total_fine = penalty + subdao_share;
+
+        if employer_balances.get(employer).unwrap_or(0) < total_fine {
+            return false; // Insufficient funds
+        }
+
+        employer_balances.set(employer, employer_balances.get(employer).unwrap_or(0) - total_fine);
+        subdao_balances.set(address::from_u64(1), subdao_balances.get(address::from_u64(1)).unwrap_or(0) + subdao_share); // Adding funds to SubDAO
+
+        return true;
+    }
+
+    // Function to process automated tax payments from SubDAO to the State/Country
+    function process_tax_payment(subdao: address, state_account: address, tax_amount: u64) -> bool {
+        let subdao_balance = subdao_balances.get(subdao).unwrap_or(0);
+
+        if subdao_balance < tax_amount {
+            return false; // Insufficient funds
+        }
+
+        subdao_balances.set(subdao, subdao_balance - tax_amount);
+        employer_tax_payments.set(state_account, employer_tax_payments.get(state_account).unwrap_or(0) + tax_amount);
+
+        return true;
+    }
+
+    // Function to allow blacklisted employers to pay fines and get reinstated
+    function pay_fine_for_reinstatement(employer: address, unpaid_fees: u64) -> bool {
+        let fine = unpaid_fees * (100 + PENALTY_RATE) / 100;
+        let subdao_fund = fine * SUBDAO_ALLOCATION / 100;
+        let total_fine = fine + subdao_fund;
+
+        if employer_balances.get(employer).unwrap_or(0) < total_fine {
+            return false; // Not enough funds
+        }
+
+        employer_balances.set(employer, employer_balances.get(employer).unwrap_or(0) - total_fine);
+        subdao_balances.set(address::from_u64(1), subdao_balances.get(address::from_u64(1)).unwrap_or(0) + subdao_fund); // SubDAO gets part of fine
+
+        blacklisted_employers.set(employer, false);
+        employer_missed_payments.set(employer, 0); // Reset missed payments
+
+        return true;
+    }
+
+    // Function to check if an employer is blacklisted
+    function is_employer_blacklisted(employer: address) -> bool {
+        return blacklisted_employers.get(employer).unwrap_or(false);
+    }
+
+    // Function to retrieve the number of missed tax payments by an employer
+    function get_missed_payments(employer: address) -> u64 {
+        return employer_missed_payments.get(employer).unwrap_or(0);
+    }
+}
