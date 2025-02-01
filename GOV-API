@@ -1,36 +1,47 @@
-program pnw_government_api.aleo;
+program government_api {
 
-use std::crypto::pedersen_commit;
-use std::collections::map;
+    mapping worker_records: mapping<address, (u64, address)>; // Maps workers to work history (employer ID, SubDAO)
+    mapping employer_compliance: mapping<address, bool>; // Tracks employer compliance status
+    mapping government_access: mapping<address, bool>; // Whitelisted government agencies
 
-// **🔹 Government API Request**
-struct GovernmentAPIRequest {
-    government_id: field,
-    worker_id: u32,
-    request_type: field,  
-    zpass_proof: option<field>, 
-}
-
-// **🔹 Declare Mappings**
-mapping government_requests: map<u32, GovernmentAPIRequest>;
-mapping approved_governments: map<field, bool>; // Stores approved agencies
-
-// **🔹 Approve Government Agencies for API Access**
-transition approve_government_agency(government_id: field) -> bool {
-    approved_governments[government_id] = true;
-    return true;
-}
-
-// **🔹 Government Requests Worker Verification (ZPass Optional)**
-transition request_worker_verification(government_id: field, worker_id: u32, request_type: field, zpass_proof: option<field>) -> bool {
-    assert(approved_governments[government_id], "Unauthorized government request");
-
-    if zpass_proof.is_some() {
-        assert(verify_zpass(zpass_proof.unwrap()), "Invalid ZPass Proof");
+    // Grants access to government agencies for verification
+    function grant_access(government_agency: address) -> bool {
+        government_access.set(government_agency, true);
+        return true;
     }
 
-    let request = GovernmentAPIRequest { government_id, worker_id, request_type, zpass_proof };
-    government_requests[worker_id] = request;
+    // Revokes access from a government agency
+    function revoke_access(government_agency: address) -> bool {
+        government_access.set(government_agency, false);
+        return true;
+    }
 
-    return true;
+    // Allows government agencies to verify a worker’s employer and SubDAO history
+    function verify_worker_history(government_agency: address, worker: address) -> (u64, address) {
+        assert!(government_access.get(government_agency).unwrap_or(false), "Unauthorized access");
+        return worker_records.get(worker).unwrap_or((0, address::from_u64(0)));
+    }
+
+    // Allows government agencies to verify an employer’s compliance status
+    function verify_employer_compliance(government_agency: address, employer: address) -> bool {
+        assert!(government_access.get(government_agency).unwrap_or(false), "Unauthorized access");
+        return employer_compliance.get(employer).unwrap_or(false);
+    }
+
+    // Updates a worker’s employment history (only callable by the PNW contract)
+    function update_worker_record(worker: address, employer_id: u64, subdao: address) -> bool {
+        worker_records.set(worker, (employer_id, subdao));
+        return true;
+    }
+
+    // Updates an employer’s compliance status (only callable by compliance_tracking)
+    function update_employer_compliance(employer: address, is_compliant: bool) -> bool {
+        employer_compliance.set(employer, is_compliant);
+        return true;
+    }
+
+    // Checks if a government agency has access
+    function has_access(government_agency: address) -> bool {
+        return government_access.get(government_agency).unwrap_or(false);
+    }
 }
