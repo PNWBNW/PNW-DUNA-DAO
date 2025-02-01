@@ -1,75 +1,74 @@
-program pnw_main.aleo;
+program pnw_smart_contract {
 
-// Import cryptographic tools
-use std::crypto::pedersen_commit;
-use std::collections::map;
+    mapping account_balances: mapping<address, u64>;
+    mapping worker_visas: mapping<address, bool>; // Tracks active Worker Visas
+    mapping subdao_membership: mapping<u32, u64>; // SubDAO ID -> Member Count
+    const MAX_SUBDAOS: u32 = 50;
+    const MIN_MEMBERS_FOR_NEW_SUBDAO: u64 = 100000;
 
-// **🔹 Worker NFT with Optional ZPass**
-struct WorkerNFT {
-    worker_id: u32,
-    owner: address,
-    visa_status: field,
-    visa_expiry: u64,
-    trust_fund_balance: u64,
-    total_earnings: u64,
-    subdao_id: u32,
-    zpass_proof: option<field>,  // Optional ZPass verification
-}
-
-// **🔹 Treasury Structure for SubDAO Governance**
-struct Treasury {
-    subdao_funds: map<u32, u64>, // Maps SubDAO ID to available funds
-}
-
-// **🔹 Employer Contract for Wage Agreements**
-struct EmployerContract {
-    employer: address,
-    worker: address,
-    agreed_salary: u64,
-    is_active: bool,
-}
-
-// **🔹 Declare Mappings**
-mapping treasury: Treasury;
-mapping worker_nfts: map<address, WorkerNFT>;
-mapping employer_contracts: map<address, EmployerContract>;
-
-// **🔹 Verify ZPass Proof (Mock Function)**
-function verify_zpass(zpass_proof: field) -> bool {
-    return pedersen_commit(zpass_proof, 12345) == pedersen_commit(12345, zpass_proof);  // Placeholder for real ZPass validation
-}
-
-// **🔹 Issue Worker NFT (ZPass Optional)**
-transition issue_worker_nft(worker_address: address, visa_status: field, visa_expiry: u64, subdao_id: u32, zpass_proof: option<field>) -> bool {
-    let worker_id = pedersen_commit(worker_address, visa_status);
-    let nft = WorkerNFT { worker_id, owner: worker_address, visa_status, visa_expiry, trust_fund_balance: 0, total_earnings: 0, subdao_id, zpass_proof };
-
-    worker_nfts[worker_address] = nft;
-    return true;
-}
-
-// **🔹 Payroll Processing (Supports Both Verified & Unverified Workers)**
-transition process_payroll(worker: address, employer: address, provided_zpass: option<field>) -> bool {
-    let contract = employer_contracts[worker];
-    assert(contract.is_active, "Contract is not active");
-
-    let nft = worker_nfts[worker];
-    assert(nft.visa_expiry > get_current_time(), "Visa expired, payroll suspended");
-
-    if nft.zpass_proof.is_some() {
-        assert(provided_zpass.is_some(), "ZPass required for this worker");
-        assert(verify_zpass(provided_zpass.unwrap()), "Invalid ZPass Proof");
+    // Check if a worker has a valid visa
+    function has_valid_visa(worker: address) -> bool {
+        return worker_visas.get(worker).unwrap_or(false);
     }
 
-    let salary = contract.agreed_salary;
-    let tax = salary * 2 / 100;
-    let net_salary = salary - tax;
+    // Issue a new worker visa (No limit on total visas)
+    function issue_worker_visa(worker: address) -> bool {
+        if has_valid_visa(worker) {
+            return false; // Worker already has a visa
+        }
+        worker_visas.set(worker, true);
+        return true;
+    }
 
-    nft.total_earnings += net_salary;
-    nft.trust_fund_balance += tax;
+    // Revoke an existing worker visa
+    function revoke_worker_visa(worker: address) -> bool {
+        if !has_valid_visa(worker) {
+            return false; // No visa to revoke
+        }
+        worker_visas.remove(worker);
+        return true;
+    }
 
-    worker_nfts[worker] = nft;
-    treasury.subdao_funds[nft.subdao_id] += tax;
+    // Get total number of members across all SubDAOs
+    function get_total_members() -> u64 {
+        let mut total: u64 = 0;
+        for i in 0..MAX_SUBDAOS {
+            total += subdao_membership.get(i).unwrap_or(0);
+        }
+        return total;
+    }
 
-    return true;
+    // Check if a new SubDAO can be created
+    function can_create_subdao() -> bool {
+        return get_total_members() >= MIN_MEMBERS_FOR_NEW_SUBDAO;
+    }
+
+    // Add a worker to a SubDAO
+    function add_worker_to_subdao(subdao_id: u32, worker: address) -> bool {
+        if subdao_id >= MAX_SUBDAOS {
+            return false; // Invalid SubDAO ID
+        }
+        if !has_valid_visa(worker) {
+            return false; // Worker must have a valid visa
+        }
+        let current_count = subdao_membership.get(subdao_id).unwrap_or(0);
+        subdao_membership.set(subdao_id, current_count + 1);
+        return true;
+    }
+
+    // Remove a worker from a SubDAO
+    function remove_worker_from_subdao(subdao_id: u32, worker: address) -> bool {
+        if subdao_id >= MAX_SUBDAOS {
+            return false; // Invalid SubDAO ID
+        }
+        if !has_valid_visa(worker) {
+            return false; // Worker must have a valid visa
+        }
+        let current_count = subdao_membership.get(subdao_id).unwrap_or(0);
+        if current_count == 0 {
+            return false; // No members to remove
+        }
+        subdao_membership.set(subdao_id, current_count - 1);
+        return true;
+    }
 }
