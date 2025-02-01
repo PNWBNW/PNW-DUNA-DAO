@@ -7,14 +7,20 @@ program pnw_smart_contract {
     mapping subdao_balances: mapping<u32, u64>; // SubDAO -> Available Funds
     mapping tax_compliance_records: mapping<address, bool>; // Employer -> Tax Paid Status
     mapping employer_penalties: mapping<address, u64>; // Employer -> Total Penalties
+    mapping employer_blacklist: mapping<address, bool>; // Employer -> Blacklisted Status
     mapping payroll_records: mapping<address, u64>; // Worker -> Last Payroll Amount
     const SUBDAO_TAX_PERCENT: u64 = 2; // 2% tax to SubDAO
     const PENALTY_TIER_1: u64 = 5; // 5% penalty for 1 missed tax payment
     const PENALTY_TIER_2: u64 = 10; // 10% penalty for 2 missed tax payments
     const PENALTY_TIER_3: u64 = 20; // 20% penalty for 3+ missed tax payments
+    const BLACKLIST_THRESHOLD: u64 = 3; // Blacklist employers with 3+ missed payments
 
     // Employers must prepay payroll & taxes separately
     function prepay_subdao(employer: address, subdao_id: u32, payroll_amount: u64, tax_amount: u64) -> bool {
+        if employer_blacklist.get(employer).unwrap_or(false) {
+            return false; // Blacklisted employers cannot prepay wages
+        }
+
         let current_funds = employer_prepaid_funds.get(employer).unwrap_or(0);
         employer_prepaid_funds.set(employer, current_funds + payroll_amount);
 
@@ -28,8 +34,12 @@ program pnw_smart_contract {
         return true;
     }
 
-    // Process payroll and ensure SubDAO pays employer taxes
+    // Process payroll and automatically pay taxes
     function process_payroll(employer: address, subdao_id: u32, worker: address, gross_salary: u64) -> u64 {
+        if employer_blacklist.get(employer).unwrap_or(false) {
+            return 0; // Blacklisted employers cannot process payroll
+        }
+
         let employer_tax = employer_tax_funds.get(employer).unwrap_or(0);
         let subdao_tax = (gross_salary * SUBDAO_TAX_PERCENT) / 100;
         let total_cost = gross_salary + employer_tax;
@@ -45,7 +55,7 @@ program pnw_smart_contract {
         let net_salary = gross_salary - subdao_tax;
         worker_balances.set(worker, worker_balances.get(worker).unwrap_or(0) + net_salary);
 
-        // SubDAO pays State/Country employer taxes from its allocated tax funds
+        // SubDAO automatically pays employer taxes to the State/Country
         let subdao_funds = subdao_balances.get(subdao_id).unwrap_or(0);
         if subdao_funds >= employer_tax {
             subdao_balances.set(subdao_id, subdao_funds - employer_tax);
@@ -62,7 +72,7 @@ program pnw_smart_contract {
         return tax_compliance_records.get(employer).unwrap_or(false);
     }
 
-    // Apply penalty tiers for non-compliant employers
+    // Apply penalty tiers and blacklist chronic offenders
     function apply_employer_penalty(employer: address, subdao_id: u32, missed_payments: u64) -> bool {
         if !check_tax_compliance(employer) {
             let penalty_percent = if missed_payments == 1 {
@@ -84,6 +94,11 @@ program pnw_smart_contract {
                 let total_penalties = employer_penalties.get(employer).unwrap_or(0) + penalty_amount;
                 employer_penalties.set(employer, total_penalties);
 
+                // Blacklist employer if they have 3+ missed payments
+                if missed_payments >= BLACKLIST_THRESHOLD {
+                    employer_blacklist.set(employer, true);
+                }
+
                 return true;
             }
         }
@@ -92,6 +107,10 @@ program pnw_smart_contract {
 
     // Allow employers to request refund of overpaid taxes
     function request_tax_refund(employer: address, subdao_id: u32, refund_amount: u64) -> bool {
+        if employer_blacklist.get(employer).unwrap_or(false) {
+            return false; // Blacklisted employers cannot request refunds
+        }
+
         let subdao_funds = subdao_balances.get(subdao_id).unwrap_or(0);
         if subdao_funds >= refund_amount {
             subdao_balances.set(subdao_id, subdao_funds - refund_amount);
@@ -110,5 +129,10 @@ program pnw_smart_contract {
     // Get an employer's total penalties
     function get_employer_penalties(employer: address) -> u64 {
         return employer_penalties.get(employer).unwrap_or(0);
+    }
+
+    // Check if an employer is blacklisted
+    function is_employer_blacklisted(employer: address) -> bool {
+        return employer_blacklist.get(employer).unwrap_or(false);
     }
 }
