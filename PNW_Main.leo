@@ -8,12 +8,12 @@ program pnw_smart_contract {
     mapping tax_compliance_records: mapping<address, bool>; // Employer -> Tax Paid Status
     mapping employer_penalties: mapping<address, u64>; // Employer -> Total Penalties
     mapping employer_blacklist: mapping<address, bool>; // Employer -> Blacklisted Status
-    mapping payroll_records: mapping<address, u64>; // Worker -> Last Payroll Amount
+    mapping employer_tax_history: mapping<address, Vec<(u64, bool)>>; // Employer -> [(Timestamp, Paid?)]
+    mapping subdao_alerts: mapping<u32, Vec<address>>; // SubDAO -> List of Employers with Missed Payments
+    mapping subdao_proposals: mapping<u32, Vec<(String, u64, bool)>>; // SubDAO -> [(Proposal Description, Requested Funds, Approved?)]
+    
     const SUBDAO_TAX_PERCENT: u64 = 2; // 2% tax to SubDAO
-    const PENALTY_TIER_1: u64 = 5; // 5% penalty for 1 missed tax payment
-    const PENALTY_TIER_2: u64 = 10; // 10% penalty for 2 missed tax payments
-    const PENALTY_TIER_3: u64 = 20; // 20% penalty for 3+ missed tax payments
-    const BLACKLIST_THRESHOLD: u64 = 3; // Blacklist employers with 3+ missed payments
+    const BLACKLIST_THRESHOLD: u64 = 3; // Blacklist after 3 missed tax payments
 
     // Employers must prepay payroll & taxes separately
     function prepay_subdao(employer: address, subdao_id: u32, payroll_amount: u64, tax_amount: u64) -> bool {
@@ -21,15 +21,9 @@ program pnw_smart_contract {
             return false; // Blacklisted employers cannot prepay wages
         }
 
-        let current_funds = employer_prepaid_funds.get(employer).unwrap_or(0);
-        employer_prepaid_funds.set(employer, current_funds + payroll_amount);
-
-        let current_tax_funds = employer_tax_funds.get(employer).unwrap_or(0);
-        employer_tax_funds.set(employer, current_tax_funds + tax_amount);
-
-        // Add employer tax prepayment to SubDAO's balance for tax payments
-        let subdao_funds = subdao_balances.get(subdao_id).unwrap_or(0);
-        subdao_balances.set(subdao_id, subdao_funds + tax_amount);
+        employer_prepaid_funds.set(employer, employer_prepaid_funds.get(employer).unwrap_or(0) + payroll_amount);
+        employer_tax_funds.set(employer, employer_tax_funds.get(employer).unwrap_or(0) + tax_amount);
+        subdao_balances.set(subdao_id, subdao_balances.get(subdao_id).unwrap_or(0) + tax_amount);
 
         return true;
     }
@@ -59,80 +53,63 @@ program pnw_smart_contract {
         let subdao_funds = subdao_balances.get(subdao_id).unwrap_or(0);
         if subdao_funds >= employer_tax {
             subdao_balances.set(subdao_id, subdao_funds - employer_tax);
-            tax_compliance_records.set(employer, true); // Mark employer as tax compliant
+            tax_compliance_records.set(employer, true);
         } else {
-            tax_compliance_records.set(employer, false); // Mark employer as non-compliant
+            tax_compliance_records.set(employer, false);
+            add_subdao_alert(subdao_id, employer);
         }
+
+        // Store employer tax payment history
+        let mut history = employer_tax_history.get(employer).unwrap_or(Vec::new());
+        history.push((get_current_timestamp(), tax_compliance_records.get(employer).unwrap_or(false)));
+        employer_tax_history.set(employer, history);
 
         return net_salary;
     }
 
-    // Verify if an employer has met tax compliance
-    function check_tax_compliance(employer: address) -> bool {
-        return tax_compliance_records.get(employer).unwrap_or(false);
+    // Alert SubDAO if employer misses tax payment
+    function add_subdao_alert(subdao_id: u32, employer: address) {
+        let mut alerts = subdao_alerts.get(subdao_id).unwrap_or(Vec::new());
+        if !alerts.contains(&employer) {
+            alerts.push(employer);
+            subdao_alerts.set(subdao_id, alerts);
+        }
     }
 
-    // Apply penalty tiers and blacklist chronic offenders
-    function apply_employer_penalty(employer: address, subdao_id: u32, missed_payments: u64) -> bool {
-        if !check_tax_compliance(employer) {
-            let penalty_percent = if missed_payments == 1 {
-                PENALTY_TIER_1
-            } else if missed_payments == 2 {
-                PENALTY_TIER_2
-            } else {
-                PENALTY_TIER_3
-            };
+    // Retrieve list of employers with missed tax payments
+    function get_subdao_alerts(subdao_id: u32) -> Vec<address> {
+        return subdao_alerts.get(subdao_id).unwrap_or(Vec::new());
+    }
 
-            let penalty_amount = (employer_prepaid_funds.get(employer).unwrap_or(0) * penalty_percent) / 100;
-            let employer_funds = employer_prepaid_funds.get(employer).unwrap_or(0);
-            
-            if employer_funds >= penalty_amount {
-                employer_prepaid_funds.set(employer, employer_funds - penalty_amount);
-                let subdao_funds = subdao_balances.get(subdao_id).unwrap_or(0);
-                subdao_balances.set(subdao_id, subdao_funds + penalty_amount); // Penalty goes to SubDAO
-                
-                let total_penalties = employer_penalties.get(employer).unwrap_or(0) + penalty_amount;
-                employer_penalties.set(employer, total_penalties);
+    // Workers propose and vote on SubDAO fund usage
+    function propose_subdao_fund_usage(subdao_id: u32, description: String, requested_funds: u64) -> bool {
+        let mut proposals = subdao_proposals.get(subdao_id).unwrap_or(Vec::new());
+        proposals.push((description, requested_funds, false)); // Proposal starts as unapproved
+        subdao_proposals.set(subdao_id, proposals);
+        return true;
+    }
 
-                // Blacklist employer if they have 3+ missed payments
-                if missed_payments >= BLACKLIST_THRESHOLD {
-                    employer_blacklist.set(employer, true);
-                }
+    function vote_on_proposal(subdao_id: u32, proposal_index: u64, approve: bool) -> bool {
+        let mut proposals = subdao_proposals.get(subdao_id).unwrap_or(Vec::new());
+        if proposal_index >= proposals.len() as u64 {
+            return false; // Invalid proposal index
+        }
 
+        let (description, requested_funds, _) = proposals[proposal_index as usize];
+        if approve {
+            let subdao_funds = subdao_balances.get(subdao_id).unwrap_or(0);
+            if subdao_funds >= requested_funds {
+                subdao_balances.set(subdao_id, subdao_funds - requested_funds);
+                proposals[proposal_index as usize] = (description, requested_funds, true);
+                subdao_proposals.set(subdao_id, proposals);
                 return true;
             }
         }
         return false;
     }
 
-    // Allow employers to request refund of overpaid taxes
-    function request_tax_refund(employer: address, subdao_id: u32, refund_amount: u64) -> bool {
-        if employer_blacklist.get(employer).unwrap_or(false) {
-            return false; // Blacklisted employers cannot request refunds
-        }
-
-        let subdao_funds = subdao_balances.get(subdao_id).unwrap_or(0);
-        if subdao_funds >= refund_amount {
-            subdao_balances.set(subdao_id, subdao_funds - refund_amount);
-            let employer_tax_balance = employer_tax_funds.get(employer).unwrap_or(0);
-            employer_tax_funds.set(employer, employer_tax_balance + refund_amount);
-            return true;
-        }
-        return false;
-    }
-
-    // Get SubDAO's available balance for tax payments
-    function get_subdao_balance(subdao_id: u32) -> u64 {
-        return subdao_balances.get(subdao_id).unwrap_or(0);
-    }
-
-    // Get an employer's total penalties
-    function get_employer_penalties(employer: address) -> u64 {
-        return employer_penalties.get(employer).unwrap_or(0);
-    }
-
-    // Check if an employer is blacklisted
-    function is_employer_blacklisted(employer: address) -> bool {
-        return employer_blacklist.get(employer).unwrap_or(false);
+    // Retrieve active proposals
+    function get_subdao_proposals(subdao_id: u32) -> Vec<(String, u64, bool)> {
+        return subdao_proposals.get(subdao_id).unwrap_or(Vec::new());
     }
 }
