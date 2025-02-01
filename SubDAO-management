@@ -1,0 +1,62 @@
+program subdao_management {
+
+    mapping subdao_worker_counts: mapping<address, u64>; // Tracks workers in each SubDAO
+    mapping subdao_list: mapping<u64, address>; // List of existing SubDAOs
+    mapping subdao_tax_discounts: mapping<address, u64>; // Tax discount per SubDAO
+
+    mut total_subdaos: u64 = 50; // Starts with 50 SubDAOs
+    const MAX_WORKERS_PER_SUBDAO: u64 = 100000; // Worker limit per SubDAO
+    const DEFAULT_TAX_DISCOUNT: u64 = 1; // 1% tax discount for early compliance
+    const MAX_TAX_DISCOUNT: u64 = 10; // Maximum votable discount = 10%
+
+    // Adds a worker to a SubDAO, creates a new one if needed
+    function add_worker_to_subdao(subdao: address) -> bool {
+        let worker_count = subdao_worker_counts.get(subdao).unwrap_or(0);
+
+        if worker_count >= MAX_WORKERS_PER_SUBDAO {
+            return create_new_subdao();
+        }
+
+        subdao_worker_counts.set(subdao, worker_count + 1);
+        return true;
+    }
+
+    // Automatically creates a new SubDAO when worker limits are reached
+    function create_new_subdao() -> bool {
+        total_subdaos += 1;
+        let new_subdao_address = compute_subdao_address(total_subdaos);
+        subdao_list.set(total_subdaos, new_subdao_address);
+        subdao_worker_counts.set(new_subdao_address, 0);
+        subdao_tax_discounts.set(new_subdao_address, DEFAULT_TAX_DISCOUNT);
+        return true;
+    }
+
+    // Computes a deterministic SubDAO address based on its ID
+    function compute_subdao_address(subdao_id: u64) -> address {
+        return address::from_u64(subdao_id * 1000); // Example deterministic computation
+    }
+
+    // Allows SubDAOs to vote on tax discounts (between 1%-10%)
+    function set_tax_discount(subdao: address, new_discount: u64) -> bool {
+        if new_discount >= DEFAULT_TAX_DISCOUNT && new_discount <= MAX_TAX_DISCOUNT {
+            subdao_tax_discounts.set(subdao, new_discount);
+            return true;
+        }
+        return false;
+    }
+
+    // Gets the current tax discount for a SubDAO
+    function get_tax_discount(subdao: address) -> u64 {
+        return subdao_tax_discounts.get(subdao).unwrap_or(DEFAULT_TAX_DISCOUNT);
+    }
+
+    // Gets the current number of workers in a SubDAO
+    function get_worker_count(subdao: address) -> u64 {
+        return subdao_worker_counts.get(subdao).unwrap_or(0);
+    }
+
+    // Gets the total number of active SubDAOs
+    function get_total_subdaos() -> u64 {
+        return total_subdaos;
+    }
+}
