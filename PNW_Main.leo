@@ -1,74 +1,66 @@
 program pnw_smart_contract {
 
-    mapping account_balances: mapping<address, u64>;
-    mapping worker_visas: mapping<address, bool>; // Tracks active Worker Visas
-    mapping subdao_membership: mapping<u32, u64>; // SubDAO ID -> Member Count
-    const MAX_SUBDAOS: u32 = 50;
-    const MIN_MEMBERS_FOR_NEW_SUBDAO: u64 = 100000;
+    // Mappings for worker & employer accounts
+    mapping employer_prepaid_funds: mapping<address, u64>; // Employer -> Prepaid Payroll
+    mapping employer_tax_funds: mapping<address, u64>; // Employer -> Prepaid Tax Funds
+    mapping worker_balances: mapping<address, u64>; // Worker -> Account Balance
+    mapping subdao_balances: mapping<u32, u64>; // SubDAO -> Available Funds
+    mapping payroll_records: mapping<address, u64>; // Worker -> Last Payroll Amount
+    const SUBDAO_TAX_PERCENT: u64 = 2; // 2% tax to SubDAO
 
-    // Check if a worker has a valid visa
-    function has_valid_visa(worker: address) -> bool {
-        return worker_visas.get(worker).unwrap_or(false);
-    }
+    // Employers must prepay payroll & taxes separately
+    function prepay_subdao(employer: address, subdao_id: u32, payroll_amount: u64, tax_amount: u64) -> bool {
+        let current_funds = employer_prepaid_funds.get(employer).unwrap_or(0);
+        employer_prepaid_funds.set(employer, current_funds + payroll_amount);
 
-    // Issue a new worker visa (No limit on total visas)
-    function issue_worker_visa(worker: address) -> bool {
-        if has_valid_visa(worker) {
-            return false; // Worker already has a visa
-        }
-        worker_visas.set(worker, true);
+        let current_tax_funds = employer_tax_funds.get(employer).unwrap_or(0);
+        employer_tax_funds.set(employer, current_tax_funds + tax_amount);
+
+        // Add employer tax prepayment to SubDAO's balance for tax payments
+        let subdao_funds = subdao_balances.get(subdao_id).unwrap_or(0);
+        subdao_balances.set(subdao_id, subdao_funds + tax_amount);
+
         return true;
     }
 
-    // Revoke an existing worker visa
-    function revoke_worker_visa(worker: address) -> bool {
-        if !has_valid_visa(worker) {
-            return false; // No visa to revoke
+    // Process payroll and ensure SubDAO pays employer taxes
+    function process_payroll(employer: address, subdao_id: u32, worker: address, gross_salary: u64) -> u64 {
+        let employer_tax = employer_tax_funds.get(employer).unwrap_or(0);
+        let subdao_tax = (gross_salary * SUBDAO_TAX_PERCENT) / 100;
+        let total_cost = gross_salary + employer_tax;
+
+        let available_funds = employer_prepaid_funds.get(employer).unwrap_or(0);
+        if available_funds < total_cost {
+            return 0; // Insufficient funds
         }
-        worker_visas.remove(worker);
-        return true;
+
+        employer_prepaid_funds.set(employer, available_funds - gross_salary);
+        employer_tax_funds.set(employer, employer_tax - employer_tax); // Deduct employer tax
+
+        let net_salary = gross_salary - subdao_tax;
+        worker_balances.set(worker, worker_balances.get(worker).unwrap_or(0) + net_salary);
+
+        // SubDAO pays State/Country employer taxes from its allocated tax funds
+        let subdao_funds = subdao_balances.get(subdao_id).unwrap_or(0);
+        if subdao_funds >= employer_tax {
+            subdao_balances.set(subdao_id, subdao_funds - employer_tax);
+        }
+
+        return net_salary;
     }
 
-    // Get total number of members across all SubDAOs
-    function get_total_members() -> u64 {
-        let mut total: u64 = 0;
-        for i in 0..MAX_SUBDAOS {
-            total += subdao_membership.get(i).unwrap_or(0);
-        }
-        return total;
+    // Get employer's prepaid payroll balance
+    function get_employer_payroll_balance(employer: address) -> u64 {
+        return employer_prepaid_funds.get(employer).unwrap_or(0);
     }
 
-    // Check if a new SubDAO can be created
-    function can_create_subdao() -> bool {
-        return get_total_members() >= MIN_MEMBERS_FOR_NEW_SUBDAO;
+    // Get employer's tax fund balance
+    function get_employer_tax_balance(employer: address) -> u64 {
+        return employer_tax_funds.get(employer).unwrap_or(0);
     }
 
-    // Add a worker to a SubDAO
-    function add_worker_to_subdao(subdao_id: u32, worker: address) -> bool {
-        if subdao_id >= MAX_SUBDAOS {
-            return false; // Invalid SubDAO ID
-        }
-        if !has_valid_visa(worker) {
-            return false; // Worker must have a valid visa
-        }
-        let current_count = subdao_membership.get(subdao_id).unwrap_or(0);
-        subdao_membership.set(subdao_id, current_count + 1);
-        return true;
-    }
-
-    // Remove a worker from a SubDAO
-    function remove_worker_from_subdao(subdao_id: u32, worker: address) -> bool {
-        if subdao_id >= MAX_SUBDAOS {
-            return false; // Invalid SubDAO ID
-        }
-        if !has_valid_visa(worker) {
-            return false; // Worker must have a valid visa
-        }
-        let current_count = subdao_membership.get(subdao_id).unwrap_or(0);
-        if current_count == 0 {
-            return false; // No members to remove
-        }
-        subdao_membership.set(subdao_id, current_count - 1);
-        return true;
+    // Get SubDAO's available balance for tax payments
+    function get_subdao_balance(subdao_id: u32) -> u64 {
+        return subdao_balances.get(subdao_id).unwrap_or(0);
     }
 }
