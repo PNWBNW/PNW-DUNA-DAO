@@ -28,6 +28,14 @@ program pnw_smart_contract {
         return true;
     }
 
+    // Ensure employer has enough prepaid funds before hiring workers
+    function can_hire_worker(employer: address, required_funds: u64) -> bool {
+        let available_funds = employer_prepaid_funds.get(employer).unwrap_or(0);
+        let available_taxes = employer_tax_funds.get(employer).unwrap_or(0);
+
+        return available_funds >= required_funds && available_taxes > 0;
+    }
+
     // Process payroll and automatically pay taxes
     function process_payroll(employer: address, subdao_id: u32, worker: address, gross_salary: u64) -> u64 {
         if employer_blacklist.get(employer).unwrap_or(false) {
@@ -40,7 +48,7 @@ program pnw_smart_contract {
 
         let available_funds = employer_prepaid_funds.get(employer).unwrap_or(0);
         if available_funds < total_cost {
-            return 0; // Insufficient funds
+            return 0; // Insufficient funds, employer must top up before hiring
         }
 
         employer_prepaid_funds.set(employer, available_funds - gross_salary);
