@@ -1,0 +1,17 @@
+/pnw-contracts
+│── /contracts
+│   │── payroll.leo                 # Handles payroll processing, employer payments, and tax deductions
+│   │── subdao_management.leo       # Manages SubDAOs, worker limits, and tax discount voting
+│   │── employer_agreement.leo      # Defines employer obligations, including tax payments & worker rights
+│   │── compliance_tracking.leo     # Tracks employer tax payments, penalties, and enforcement actions
+│   │── government_api.leo          # Provides secure data-sharing functions for government verification
+│   │── worker_identity.leo         # Manages worker identity verification (optional ZPass integration)
+│   └── governance.leo              # Handles SubDAO governance, voting, and fund allocation
+│
+│── /docs
+│   │── README.md                   # Documentation for the PNW smart contract system
+│   └── compliance_policy.md        # Detailed compliance requirements for employers & SubDAOs
+│
+│── .gitignore                       # Excludes unnecessary files (logs, build files, etc.)
+│── pnw_project_config.toml          # Configuration file for contract deployment
+│── LICENSE                          # Proprietary license for PNW contracts
