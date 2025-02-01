@@ -1,42 +1,47 @@
-program pnw_employer_contract.aleo;
+program employer_dao_contract {
 
-use std::crypto::pedersen_commit;
-use std::collections::map;
+    mapping employer_taxes: mapping<address, u64>; // Employer -> Required State/Country tax amount
+    mapping employer_prepaid_funds: mapping<address, u64>; // Employer -> Prepaid funds with SubDAO
+    mapping payroll_records: mapping<address, u64>; // Worker -> Last Payroll Amount
+    const SUBDAO_TAX_PERCENT: u64 = 2; // 2% tax to SubDAO
 
-struct EmployerContract {
-    employer: address,
-    subdao_id: u32,
-    worker: address,
-    gross_salary: u64,  // Includes payroll tax
-    net_salary: u64,    // What the worker actually receives
-    tax_amount: u64,    // 2% payroll tax
-    is_active: bool,
-}
+    // Employers prepay SubDAOs for total employment costs
+    function prepay_subdao(employer: address, amount: u64) -> bool {
+        let current_balance = employer_prepaid_funds.get(employer).unwrap_or(0);
+        employer_prepaid_funds.set(employer, current_balance + amount);
+        return true;
+    }
 
-mapping employer_contracts: map<address, EmployerContract>;
+    // Set employer’s required state/country tax amount
+    function set_employer_tax(employer: address, tax_amount: u64) -> bool {
+        employer_taxes.set(employer, tax_amount);
+        return true;
+    }
 
-// **🔹 Create Salary Agreement (Employer Must Cover Payroll Tax)**
-transition create_salary_agreement(employer: address, worker: address, subdao_id: u32, gross_salary: u64) -> bool {
-    let tax_amount = gross_salary * 2 / 100;
-    let net_salary = gross_salary - tax_amount;
+    // Process payroll using employer’s prepaid funds
+    function process_payroll(employer: address, worker: address, gross_salary: u64) -> u64 {
+        let employer_tax = employer_taxes.get(employer).unwrap_or(0);
+        let subdao_tax = (gross_salary * SUBDAO_TAX_PERCENT) / 100; // 2% SubDAO tax
+        let total_cost = gross_salary + employer_tax; // Total cost for employer
 
-    let contract = EmployerContract {
-        employer,
-        subdao_id,
-        worker,
-        gross_salary,
-        net_salary,
-        tax_amount,
-        is_active: true,
-    };
+        // Check if employer has enough prepaid funds
+        let available_funds = employer_prepaid_funds.get(employer).unwrap_or(0);
+        if available_funds < total_cost {
+            return 0; // Insufficient prepaid funds
+        }
 
-    employer_contracts[worker] = contract;
-    return true;
-}
+        // Deduct from employer’s prepaid balance
+        employer_prepaid_funds.set(employer, available_funds - total_cost);
 
-// **🔹 Verify Employer Contract Before Payroll Processing**
-function verify_employer_contract(worker: address) -> EmployerContract {
-    let contract = employer_contracts[worker];
-    assert(contract.is_active, "Contract is not active");
-    return contract;
+        // Compute net salary for worker
+        let net_salary = gross_salary - subdao_tax;
+        payroll_records.set(worker, net_salary);
+
+        return net_salary;
+    }
+
+    // Get employer's prepaid balance
+    function get_employer_balance(employer: address) -> u64 {
+        return employer_prepaid_funds.get(employer).unwrap_or(0);
+    }
 }
